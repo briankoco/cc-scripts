@@ -1,0 +1,26 @@
+steps for creating kvm cluster:
+    A. One time things
+        i. allocate lease (climate)
+        ii. allocate nodes (nova) with names kvm-varbench-<id>
+        iii. allocate single floating IP address for node-0
+        iv. allocate 1 neutron port per VM, with name prefix 'vm'
+        v. run create-cluster-info.py to create a list of host and guest network IDs (cluster-info.json)
+        vi. scp v, vi, boot-vms.py, and vm.cfg to the head node
+
+    B. From the head node
+        i. run "./boot-vms.py <cluster-info.json>", which does:
+            a. updates vm.xml, replacing de:ad:be:ef:00:00 with guest MAC address
+            b. scp vm.xml <host IP address> 
+            c. ssh <ip address> "sudo ./vm-run.sh"
+
+        ### wait for VMs to come up ###
+
+        ##### steps 2 and 3 only need to be done if the cluster-info changes #####
+        ii. for each entry in cluster-info.json, run
+            a. "scp cluster-info.json <ip address>:"
+
+        iii. for each node, run 'ssh <ip address> "virsh reboot vm"
+
+        ### wait for VMs to come up ###
+
+    C. profit

@@ -1,0 +1,41 @@
+leases:
+   source blazarclient/bin/activate
+   climate ....
+   
+   # to get reservation ID, look for physical ID under reservations from this command:
+   climate lease-show <lease id>
+
+   # creation:
+   climate lease-create --physical-reservation min=1,max=1,resource_properties='["=", "$node_type", "compute"]' --start-date "2015-06-17 16:00" --end-date "2015-06-17 18:00"  my-first-lease
+     
+instances:
+   nova boot --flavor baremetal --image <image name> --key-name pet-lab-2 --nice net-name=sharednet1 --hint reservation=<reservation_id> --min-count <nr_nodes> --max-count <nr_nodes> <name>
+
+floating IP
+    nova floating-ip-list
+    nova floating-ip-associate <instance ID> <IP address>
+
+
+steps for creating kvm cluster:
+    A. One time things
+        i. allocate lease (climate)
+        ii. allocate nodes (nova) with names kvm-varbench-<id>
+        iii. allocate single floating IP address for node-0
+        iv. allocate 1 neutron port per VM, with name prefix 'vm'
+        v. run create-neutron-dns-list.py to map the freshly allocated mac addresses to ports and hostnames
+
+    B. From the head node
+        i. for each host, run 'scp vm.xml to node; ssh <ip address> "sudo ./vm-run.sh"
+        ii. for each VM IP address, run "scp neutron-dns-list <ip address>:"
+        iii. for each node, run 'ssh <ip address> "virsh destroy vm"
+        iv. repeat step i.
+
+    C. profit
+
+
+other gotchas:
+    setting up ssh keys on the cluster
+
+    i. scp ~/.ssh/id_rsa* to the head node
+    ii. scp from the head node to all other nodes
+    iii. disable strict key checking on each node (use the scp utility)

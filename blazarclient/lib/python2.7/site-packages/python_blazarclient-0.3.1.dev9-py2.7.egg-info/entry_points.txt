@@ -1,0 +1,4 @@
+[console_scripts]
+blazar = blazarclient.shell:main
+climate = blazarclient.shell:main
+
