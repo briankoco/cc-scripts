@@ -93,7 +93,7 @@ def main(argc, argv, envp):
     ports     = port_list['ports']
 
     # parse out hosts and guests that match the keys and sort them by name
-    valid_hosts  = sorted([h for h in             hosts if nova_like    is None or nova_like    in h.name],     key=lambda h: h.name)
+    valid_hosts  = sorted([h for h in             hosts if h.status == "ACTIVE" and (nova_like    is None or nova_like    in h.name)],     key=lambda h: h.name)
     valid_guests = sorted([g for g in [p for p in ports if neutron_like is None or neutron_like in p['name']]], key=lambda g: g['name'])
 
     _dict = []
