@@ -15,6 +15,7 @@ def usage(argv, exit=None):
     print >> sys.stderr, "  -h (--help)     : print help and exit"
     print >> sys.stderr, "  -o (--nova-like=<o>)    : only generate entries for host entries that contain <o>"
     print >> sys.stderr, "  -e (--neutron-like=<o>) : only generate entries for VM entries that contain <o>"
+    print >> sys.stderr, "  -p (--private-net)      : generate guest IP addresses on a private 192.168.0.x network"
     print >> sys.stderr, "  -d (--disable-vms)      : only generate host entries"
     print >> sys.stderr, "  -s (--single-host=<s>)  : put all VM entries on a single host <s>"
     if exit is not None:
@@ -26,12 +27,13 @@ def parse_cmd_line(argc, argv):
     args = []
     nova_like = None
     neutron_like = None
+    private_net = False
     host_only = False
     host = None
 
     try:
-        opts, args = getopt.getopt(argv[1:], "ho:e:ds:", 
-            ["help, nova-like=", "neutron-like=", "disable-vms", "single-host="])
+        opts, args = getopt.getopt(argv[1:], "ho:e:pds:", 
+            ["help, nova-like=", "neutron-like=", "private-net", "disable-vms", "single-host="])
     except getopt.GetoptError:
         usage(argv, exit=1)
 
@@ -45,6 +47,9 @@ def parse_cmd_line(argc, argv):
         elif o in ("-e", "--neutron-like"):
             neutron_like = a
 
+        elif o in ("-p", "--private-net"):
+            private_net = True
+
         elif o in ("-d", "--disable-vms"):
             host_only = True
 
@@ -57,11 +62,32 @@ def parse_cmd_line(argc, argv):
     if len(args) != 1:
         usage(argv, exit=1)
 
-    return nova_like, neutron_like, host_only, host, args[0]
+    if private_net and neutron_like is not None:
+        print >> sys.stderr, "Cannot speify both --private-net and --neutron-like"
+        usage(argv, exit=1)
 
+    return nova_like, neutron_like, private_net, host_only, host, args[0]
+
+def get_host_mac_address(host_ip_address, ports):
+    for p in ports:
+        for ip in p["fixed_ips"]:
+            if ip["ip_address"] == host_ip_address:
+                return p["mac_address"]
+
+    return None
+
+
+# A very crude assumption here is that "nic 2" on each machine has a MAC
+# address that is +2 "greater than" the NIC that we can actually see via
+# neutron
+def get_guest_mac_address_from_host(host_mac_address):
+    mac_hexs = host_mac_address.split(":")
+    last_hex = int(mac_hexs[-1], 16)
+    mac_hexs[-1] = str(hex(last_hex + 2)[2:])
+    return ":".join(mac_hexs)
 
 def main(argc, argv, envp):
-    nova_like, neutron_like, host_only, host, out_file = parse_cmd_line(argc, argv)
+    nova_like, neutron_like, private_net, host_only, host, out_file = parse_cmd_line(argc, argv)
 
     if host is not None:
         if host_only:
@@ -98,6 +124,7 @@ def main(argc, argv, envp):
 
     _dict = []
 
+
     if host is None:
         # Algorithm: get list of nova hosts and neutron ports
         # Walk though in tandem until one or the other runs out.
@@ -113,7 +140,34 @@ def main(argc, argv, envp):
                     'host_hostname'  : host_name,
                     'host_ip'        : host_network,
                 })
+        elif private_net:
+            # Calculate guest MAC based on hot
+            # Calculate guest IP based on VM ID
+
+            vm_id = 0
+            for h in valid_hosts:
+                host_network = h.networks['sharednet1'][0]
+                host_name    = h.name
+                host_mac     = get_host_mac_address(host_network, ports)
+
+                guest_name    = "vm-%d" % vm_id
+                guest_network = "192.168.0.%d" % (2 + vm_id)
+                guest_mac     = get_guest_mac_address_from_host(host_mac)
+
+                _dict.append({
+                    'host_hostname'  : host_name,
+                    'host_ip'        : host_network,
+                    'guest_hostname' : guest_name,
+                    'guest_ip'       : guest_network,
+                    'guest_mac'      : guest_mac,
+                    'guest_id'       : vm_id,
+                    'guest_mode'     : 'static'
+                })
+
+                vm_id += 1
+
         else:
+            # Calculate guest MAC/IP from neutron port we just allocated
             vm_id = 0
             for h, g in zip(valid_hosts, valid_guests):
                 host_network = h.networks['sharednet1'][0]
@@ -132,7 +186,8 @@ def main(argc, argv, envp):
                     'guest_hostname' : guest_name,
                     'guest_ip'       : guest_network,
                     'guest_mac'      : guest_mac,
-                    'guest_id'       : vm_id
+                    'guest_id'       : vm_id,
+                    'guest_mode'     : 'dynamic'
                 })
 
                 vm_id += 1
@@ -150,25 +205,53 @@ def main(argc, argv, envp):
         host_network = h.networks['sharednet1'][0]
         host_name    = h.name
 
-        vm_id = 0
-        for g in valid_guests:
-            ips = g['fixed_ips']
-            assert len(ips) == 1
+        if private_net:
+            # Calculate guest MAC based on hot
+            # Calculate guest IP based on VM ID
 
-            guest_name = g['name']
-            guest_network = ips[0]['ip_address']
-            guest_mac = g['mac_address']
+            vm_id = 0
+            for h in valid_hosts:
+                host_network = h.networks['sharednet1'][0]
+                host_name    = h.name
+                host_mac     = get_host_mac_address(host_network, ports)
 
-            _dict.append({
-                'host_hostname'  : host_name,
-                'host_ip'        : host_network,
-                'guest_hostname' : guest_name,
-                'guest_ip'       : guest_network,
-                'guest_mac'      : guest_mac,
-                'guest_id'       : vm_id
-            })
+                guest_name    = "vm-%d" % vm_id
+                guest_network = "192.168.0.%d" % (2 + vm_id)
+                guest_mac     = get_guest_mac_address_from_host(host_mac)
 
-            vm_id += 1
+                _dict.append({
+                    'host_hostname'  : host_name,
+                    'host_ip'        : host_network,
+                    'guest_hostname' : guest_name,
+                    'guest_ip'       : guest_network,
+                    'guest_mac'      : guest_mac,
+                    'guest_id'       : vm_id,
+                    'guest_mode'     : 'static'
+                })
+
+                vm_id += 1
+
+        else:
+            vm_id = 0
+            for g in valid_guests:
+                ips = g['fixed_ips']
+                assert len(ips) == 1
+
+                guest_name = g['name']
+                guest_network = ips[0]['ip_address']
+                guest_mac = g['mac_address']
+
+                _dict.append({
+                    'host_hostname'  : host_name,
+                    'host_ip'        : host_network,
+                    'guest_hostname' : guest_name,
+                    'guest_ip'       : guest_network,
+                    'guest_mac'      : guest_mac,
+                    'guest_id'       : vm_id,
+                    'guest_mode'     : 'dynamic'
+                })
+
+                vm_id += 1
 
     json_data = {
         "vms_per_host" : 1 if host is None else vm_id,
