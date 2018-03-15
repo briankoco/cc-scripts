@@ -80,11 +80,27 @@ def get_host_mac_address(host_ip_address, ports):
 # A very crude assumption here is that "nic 2" on each machine has a MAC
 # address that is +2 "greater than" the NIC that we can actually see via
 # neutron
+
+# 2 edge cases:
+#   (1) for values less than 0x10, we need to prepend a '0':
+#       e.g., 0x0f instead of 0xf
+#
+#   (2) for values greater than 0xff, it's not clear how to deal with them
+#       
 def get_guest_mac_address_from_host(host_mac_address):
     mac_hexs = host_mac_address.split(":")
     last_hex = int(mac_hexs[-1], 16)
-    mac_hexs[-1] = str(hex(last_hex + 2)[2:])
-    return ":".join(mac_hexs)
+
+    #  edge cases
+    if last_hex < 254:
+       max_hexs[-1] = str(hex(last_hex + 2)[2:]) 
+       if last_hex < 14:
+           max_hexs[-1] = '0' + mac_hexs[-1]
+
+        return ":".join(mac_hexs)
+
+    print >> sys.stderr, "Unsure how to handle host MAC %s " host_mac_address
+    return "00:00:00:00:00:00"
 
 def main(argc, argv, envp):
     nova_like, neutron_like, private_net, host_only, host, out_file = parse_cmd_line(argc, argv)
