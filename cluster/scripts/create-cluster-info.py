@@ -85,22 +85,26 @@ def get_host_mac_address(host_ip_address, ports):
 #   (1) for values less than 0x10, we need to prepend a '0':
 #       e.g., 0x0f instead of 0xf
 #
-#   (2) for values greater than 0xff, it's not clear how to deal with them
+#   (2) for values greater than 0xfd, need to add 1 to the second to last hex
 #       
+
+def inc_hex_val(address_list, index, val):
+    old_val = int(address_list[index], 16)
+    new_val = old_val + val
+
+    if new_val >= 0x100:
+        new_val %= 0x100
+        address_list[:] = inc_hex_val(address_list, index - 1, 1)
+
+    address_list[index] = hex(new_val)[2:]
+
+    if new_val < 0xf:
+        address_list[index] = '0' + address_list[index]
+
+    return address_list
+
 def get_guest_mac_address_from_host(host_mac_address):
-    mac_hexs = host_mac_address.split(":")
-    last_hex = int(mac_hexs[-1], 16)
-
-    #  edge cases
-    if last_hex < 254:
-       max_hexs[-1] = str(hex(last_hex + 2)[2:]) 
-       if last_hex < 14:
-           max_hexs[-1] = '0' + mac_hexs[-1]
-
-        return ":".join(mac_hexs)
-
-    print >> sys.stderr, "Unsure how to handle host MAC %s " host_mac_address
-    return "00:00:00:00:00:00"
+    return ":".join(inc_hex_val(host_mac_address.split(":"), -1, 2))
 
 def main(argc, argv, envp):
     nova_like, neutron_like, private_net, host_only, host, out_file = parse_cmd_line(argc, argv)
