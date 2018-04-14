@@ -17,6 +17,10 @@ if (( $nodes % $npb != 0 )); then
     exit 1
 fi
 
+LOG="$(date +%h-%m-%y-%H:%M).log"
+echo > $LOG
+echo "Saving boot info to $LOG"
+
 iterations=$(($nodes/$npb))
 
 for iter in $(seq 0 $(($iterations-1))); do
@@ -29,8 +33,11 @@ for iter in $(seq 0 $(($iterations-1))); do
             --key-name pet-lab-2 \
             --nic net-name=sharednet1 \
             --hint reservation=$lease \
-            $node_name
+            $node_name &>> $LOG
     done
 
-    sleep $period
+    for i in $(seq 1 $period); do
+        sleep 1
+        echo "Sleeping for $(($period - $i)) seconds ..."
+    done
 done
